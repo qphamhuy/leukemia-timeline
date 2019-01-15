@@ -1,0 +1,17 @@
+.y-axis {
+  color: #bbb;
+}
+
+.circle {
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.line {
+  stroke-width: 2;
+}
+
+.desc {
+  font-family: "Ubuntu", sans-serif;
+  font-size: 0.7em;
+}
