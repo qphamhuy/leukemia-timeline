@@ -19,9 +19,16 @@ var leukemia_timeline = (function() {
 
   var pixelsPerDay = 15;
   var numDays = 300;
-  var margin = {top: 50, right: 50, bottom: 50, left: 50}
+  var margin = {top: 50, right: 50, bottom: 50, left: 300}
   , width = window.innerWidth - margin.left - margin.right // Use the window's width
   , height = 300 * 15 - margin.top - margin.bottom; // Use the window's height
+
+  // Draw main SVG
+  var svg = d3.select("body").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+    .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
   // Set start of axis to be 5 days before first event
   var axisStart = (() => {
@@ -41,22 +48,19 @@ var leukemia_timeline = (function() {
       .domain([axisStart, axisEnd]) // input
       .range([0, height]); // output
 
-  // Draw main SVG
-  var svg = d3.select("body").append("svg")
-    .attr("width", width + margin.left + margin.right)
-    .attr("height", height + margin.top + margin.bottom)
-    .append("g")
-    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
-
   // Draw y-axis
   svg.append("g")
     .attr("class", "y-axis")
-    .call(d3.axisLeft(yScale).tickFormat(d3.timeFormat('%b')));
+    .call(d3.axisLeft(yScale)
+            .tickFormat(d3.timeFormat('%Y'))
+            .ticks(1));
 
+  // Draw g group containing two points and a line
   var gEnter = svg.selectAll('.blank')
     .data(datapoints)
     .enter()
-    .append('g');
+    .append('g')
+    .attr('id', function(d, i) { return `event-${i}`; });
 
   gEnter.append('circle')
     .attr('class', 'circle top')
@@ -81,70 +85,72 @@ var leukemia_timeline = (function() {
     .attr('stroke', '#ffab00')
     .attr('d', function(d) { return lineGenerator(d.time_span); });
 
+  gEnter.append('text')
+    .attr('class', 'text')
+    .attr('id', function(d, i) { return `desc-${i}`;})
+    .attr('x', 0)
+    .attr('y', d => yScale(new Date(d.time_span[0])) + 5)
+    .attr('fill', '#444')
+    .attr('visibility', 'hidden')
+    .text(function(d) { return d.desc});
+
+  gEnter.append('text')
+    .attr('class', 'text')
+    .attr('id', function(d, i) { return `timespan-${i}`;})
+    .attr('x', 0)
+    .attr('y', function(d, i) { return yScale(new Date(d.time_span[0])) + 5; })
+    .attr('fill', '#444')
+    .attr('visibility', 'hidden')
+    .text(d => formatDate(d.time_span[0]) + (d.time_span[0] !== d.time_span[1]
+        ? ` - ${formatDate(d.time_span[1])}`
+        : ''));
+
+  function formatDate(d) {
+    return d.replace(/([0-9]{4})\/([0-9]{2})\/([0-9]{2})/, "$2/$3/$1");
+  }
+
   window.addEventListener('scroll', _.throttle(windowScroll, 200));
 
-  var yWindow = { top: scrollY, bottom: scrollY + 50 };
+  var onlyLastPointLeft = false;
   function windowScroll() {
-    topPoints = _.find(datapoints, function(point) {
+    // For the last data point, we increase the viewable yWindow's height, in case
+    // the default height (100) can put into view
+    var lastPoint = datapoints[datapoints.length - 1];
+    var lastPointLength =
+        yScale(new Date(lastPoint.time_span[1])) - yScale(new Date(lastPoint.time_span[0]));
+    var yWindowHeight = onlyLastPointLeft && lastPointLength < window.innerHeight
+      ? window.innerHeight - lastPointLength
+      : 100;
+    var yWindow = { top: scrollY, bottom: scrollY + yWindowHeight };
+
+    topPoints = _.filter(datapoints, function(point) {
       return (dataPointWithinWindow(point.time_span[0]));
     });
 
-    bottomPoints = _.find(datapoints, function(point) {
-      return (dataPointWithinWindow(point.time_span[1]));
-    });
+    if (topPoints.length > 0) {
+      _.forEach(topPoints, function(topPoint) {
+        topPointIdx = _.indexOf(datapoints, topPoint);
+        if (topPointIdx === datapoints.length - 2) {
+          onlyLastPointLeft = true;
+        }
 
-    d3.select('svg').selectAll('circle');
+        var selectedGroup = d3.select(`#event-${topPointIdx}`)
+
+        selectedGroup.selectAll('circle').transition().attr('r', '6').duration(500);
+        selectedGroup.select(`#desc-${topPointIdx}`)
+          .transition()
+          .attr('x', 20)
+          .attr('visibility', 'visible');
+        var timespanText = selectedGroup.select(`#timespan-${topPointIdx}`);
+        timespanText.transition()
+          .attr('x', -timespanText.node().getComputedTextLength() - 20)
+          .attr('visibility', 'visible');
+      });
+    }
 
     function dataPointWithinWindow(time) {
-      yScaleCoord = yScale(new Date(time));
-      return (yScaleCoord > yWindow.top && yScaleCoord < yWindow.bottom)
+      yScaleCoord = yScale(new Date(time)) + margin.top;
+      return (yScaleCoord >= yWindow.top && yScaleCoord <= yWindow.bottom);
     }
   }
-
-  // gEnter
-  //   .on('mouseenter', onMouseEnter)
-  //   .on('mouseleave', onMouseLeave);
-
-  // // function onMouseEnter(d) {
-  //     var str = d.time_span[0] +
-  //       (d.time_span[0] === d.time_span[1]
-  //         ? ''
-  //         : ` - ${d.time_span[1]}`)
-  //       + `: ${d.desc}`;
-  //
-  //     svg.append('text')
-  //       .attr('class', 'desc')
-  //       .attr('id', 'desc')
-  //       .attr('x', 0)
-  //       .attr('y', yScale(new Date(d.time_span[0])) + 5)
-  //       .attr('fill', '#444')
-  //       .attr('visibility', 'hidden')
-  //       .text(str);
-  //
-  //     svg.select('#desc')
-  //       .transition()
-  //       .attr('x', 20)
-  //       .duration(500)
-  //       .attr('visibility', 'visible');
-  //
-  //     d3.select(this).selectAll('circle')
-  //       .transition()
-  //       .attr('r', 5)
-  //       .attr('fill', '#444')
-  //       .duration(500);
-  //
-  //     d3.select(this).selectAll('path')
-  //       .transition()
-  //       .attr('stroke', '#444')
-  //       .duration(500);
-  // }
-  //
-  // function onMouseLeave(d) {
-  //   d3.select('#desc').remove();
-  //   d3.select(this).selectAll('circle')
-  //     .attr('r', 5)
-  //     .attr('fill', '#ffab00');
-  //   d3.select(this).selectAll('path')
-  //     .attr('stroke', '#ffab00');
-  // }
 })();
